@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gini · América Latina y España (1974–2017)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root{
+    --bg:           #fafafa;
+    --surface:      #ffffff;
+    --ink:          #14141a;
+    --ink-soft:     #6f7178;
+    --ink-faint:    #a8aab1;
+    --line:         #e7e8eb;
+    --line-strong:  #d3d5da;
+    --accent:       #2952e3;
+    --accent-bg:    #2952e30f;
+    --spain:        #14141a;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+
+  .wrap{
+    max-width:1220px;
+    margin:0 auto;
+    padding:40px 24px 72px;
+  }
+
+  header{ margin-bottom:28px; }
+  .kicker{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:18px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+  }
+  .kicker .dot-flow{ display:inline-flex; align-items:center; gap:5px; }
+  .kicker .dot-flow span{ width:5px;height:5px;border-radius:50%; background:var(--accent); display:inline-block; }
+  h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:clamp(26px, 3.6vw, 38px);
+    line-height:1.15;
+    margin:0 0 10px;
+    letter-spacing:-0.02em;
+    max-width:780px;
+  }
+  .subhead{ font-size:15px; color:var(--ink-soft); max-width:660px; margin:0; }
+
+  .stage{
+    display:grid;
+    grid-template-columns: 1fr 300px;
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+  }
+  @media (max-width: 920px){ .stage{grid-template-columns:1fr;} }
+
+  .panel{ background:var(--surface); }
+
+  .chart-panel{padding:22px 22px 16px;}
+  .chart-head{
+    display:flex; justify-content:space-between; align-items:baseline;
+    flex-wrap:wrap; gap:8px; margin-bottom:4px;
+  }
+  .chart-title{ font-family:'Space Grotesk', sans-serif; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+  .chart-note{ font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--ink-faint); letter-spacing:.02em; }
+  #chart{width:100%; display:block;}
+
+  .axis text{ font-family:'JetBrains Mono', monospace; font-size:10.5px; fill:var(--ink-faint); }
+  .axis path, .axis line{stroke:var(--line-strong);}
+  .gridline{stroke:var(--line); opacity:1;}
+
+  .country-line{
+    fill:none; stroke-width:1.7;
+    transition: stroke-opacity .2s ease, stroke-width .2s ease;
+  }
+  .country-line.dim{ stroke-opacity:.10; }
+  .country-line.active{ stroke-width:2.6; stroke-opacity:1 !important; }
+
+  .spain-line{
+    fill:none; stroke:var(--spain); stroke-width:2;
+    stroke-dasharray:1,4; stroke-linecap:round;
+    transition: stroke-opacity .2s ease;
+  }
+  .spain-line.dim{ stroke-opacity:.12; }
+
+  .avg-line{
+    fill:none; stroke:var(--ink-faint); stroke-width:1.2;
+    stroke-dasharray:3,3; opacity:.7;
+  }
+  .avg-line.hidden{ opacity:0; }
+
+  .hover-dot{ fill:var(--surface); stroke-width:2; }
+  .voronoi-overlay{ fill:none; pointer-events:all; }
+  .hairline{ stroke:var(--ink); stroke-width:1; opacity:0; pointer-events:none; }
+
+  /* end labels: flag swatch (mini SVG) + abbr + full name, white-outlined */
+  .end-label-group{ cursor:pointer; }
+  .leader-line{
+    stroke:var(--ink-faint);
+    stroke-width:1;
+    opacity:.55;
+    fill:none;
+  }
+  .label-pill-bg{
+    fill:var(--surface);
+    opacity:0.92;
+  }
+  .label-text{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    font-weight:600;
+    paint-order:stroke fill;
+    stroke:#fff;
+    stroke-width:3px;
+    stroke-linejoin:round;
+  }
+  .label-text .name-part{
+    font-family:'Inter', sans-serif;
+    font-weight:500;
+  }
+  .label-dot{ r:2.5; }
+
+  .tooltip{
+    position:absolute; pointer-events:none;
+    background:var(--ink); color:#fff;
+    padding:9px 12px; font-size:12.5px;
+    border-radius:6px; line-height:1.45;
+    box-shadow:0 8px 24px rgba(20,20,26,.18);
+    z-index:20; max-width:230px;
+  }
+  .tooltip .t-name{font-weight:600; display:flex; align-items:center; gap:6px; font-family:'Space Grotesk', sans-serif;}
+  .tooltip .t-val{font-family:'JetBrains Mono', monospace; margin-top:4px; font-size:12px;}
+  .tooltip .t-sub{font-family:'JetBrains Mono', monospace; color:#9aa0b8; font-size:11px; margin-top:2px;}
+
+  /* ---------- Legend ---------- */
+  .legend{
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin-top:18px; padding-top:16px; border-top:1px solid var(--line);
+  }
+  .legend-item{
+    display:flex; align-items:center; gap:6px;
+    font-size:11.5px; font-family:'JetBrains Mono', monospace;
+    cursor:pointer; padding:5px 9px 5px 6px; border-radius:20px;
+    border:1px solid var(--line); user-select:none;
+    transition: border-color .15s ease, opacity .2s ease, background .15s ease;
+    background:var(--surface);
+  }
+  .legend-item:hover{ border-color:var(--line-strong); }
+  .legend-item.dim{ opacity:.32; }
+  .legend-item.active{ border-color:var(--accent); background:var(--accent-bg); color:var(--accent); font-weight:600; }
+  .legend-swatch{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .legend-item.spain-chip{ cursor:default; }
+  .legend-reset{
+    margin-left:auto; font-family:'JetBrains Mono', monospace; font-size:11px;
+    color:var(--ink-soft); background:none; border:1px solid var(--line);
+    padding:6px 12px; cursor:pointer; border-radius:20px;
+  }
+  .legend-reset:hover{ border-color:var(--ink); color:var(--ink); }
+
+  .mode-row{
+    display:flex; align-items:center; gap:10px;
+    margin-top:14px; font-size:11.5px; color:var(--ink-soft);
+  }
+  .mode-hint{ font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--ink-faint); }
+
+  /* ---------- Side panel ---------- */
+  .side-panel{ padding:22px 20px; display:flex; flex-direction:column; gap:16px; }
+  .side-eyebrow{ font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); }
+  .side-title{
+    font-family:'Space Grotesk', sans-serif; font-size:18px; font-weight:600;
+    margin:2px 0 0; display:flex; align-items:center; gap:8px; letter-spacing:-0.01em;
+  }
+  .side-empty{ color:var(--ink-soft); font-size:13px; line-height:1.6; }
+
+  .selected-chip-row{ display:flex; flex-wrap:wrap; gap:6px; }
+  .sel-chip{
+    display:flex; align-items:center; gap:5px;
+    font-family:'JetBrains Mono', monospace; font-size:11px; font-weight:600;
+    padding:4px 8px 4px 6px; border-radius:14px;
+    border:1px solid var(--line-strong);
+  }
+  .sel-chip .x{ cursor:pointer; color:var(--ink-faint); font-weight:400; padding-left:2px; }
+  .sel-chip .x:hover{ color:var(--ink); }
+
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat{ border:1px solid var(--line); padding:10px 11px; }
+  .stat-label{ font-family:'JetBrains Mono', monospace; font-size:9.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; }
+  .stat-val{ font-family:'JetBrains Mono', monospace; font-size:17px; font-weight:600; margin-top:3px; color:var(--ink); }
+  .stat-sub{ font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--ink-faint); margin-top:1px; }
+
+  .delta-row{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:12.5px; padding:8px 0; border-bottom:1px solid var(--line);
+  }
+  .delta-row:last-child{border-bottom:none;}
+  .delta-label{color:var(--ink-soft); display:flex; align-items:center; gap:6px;}
+  .delta-val{font-family:'JetBrains Mono', monospace; font-weight:600;}
+  .delta-val.up{color:#c23a4a;}
+  .delta-val.down{color:#1f8a5c;}
+
+  .pair-table{ display:flex; flex-direction:column; }
+  .pair-row{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:12px; padding:7px 0; border-bottom:1px solid var(--line);
+  }
+  .pair-row:last-child{ border-bottom:none; }
+  .pair-names{ display:flex; align-items:center; gap:5px; color:var(--ink-soft); }
+  .pair-val{ font-family:'JetBrains Mono', monospace; font-weight:600; }
+
+  .similarity-title{ font-size:11.5px; color:var(--ink-soft); margin-bottom:6px; line-height:1.4; }
+  .sim-bar-track{ background:var(--bg); border-radius:3px; height:5px; overflow:hidden; margin-top:5px; }
+  .sim-bar-fill{ height:100%; border-radius:3px; }
+  .sim-row{ padding:8px 0; border-bottom:1px solid var(--line); cursor:pointer; transition: background .12s ease; }
+  .sim-row:hover{ background:var(--bg); }
+  .sim-row .delta-row{border-bottom:none; padding:0 0 2px;}
+
+  .back-btn{
+    font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-soft);
+    background:none; border:1px solid var(--line); padding:8px 12px; cursor:pointer;
+    border-radius:6px; text-align:left; margin-top:2px;
+  }
+  .back-btn:hover{ border-color:var(--ink); color:var(--ink); }
+
+  .meta{
+    margin-top:1px; display:grid; grid-template-columns:1.3fr 1fr; gap:1px;
+    background:var(--line); border:1px solid var(--line); border-top:none;
+  }
+  @media (max-width:920px){ .meta{grid-template-columns:1fr;} }
+  .meta-block{ background:var(--surface); padding:20px 22px; font-size:12.5px; color:var(--ink-soft); line-height:1.6; }
+  .meta-block h3{
+    font-family:'Space Grotesk', sans-serif; font-size:11px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--ink); margin:0 0 10px;
+  }
+  .meta-block p{margin:0 0 8px;}
+  .meta-block code{
+    font-family:'JetBrains Mono', monospace; background:var(--bg); border:1px solid var(--line);
+    padding:1px 5px; border-radius:4px; font-size:11.5px; color:var(--ink);
+  }
+  .hint{ font-size:11.5px; color:var(--ink-faint); margin-top:10px; }
+
+  svg.flag-icon{ display:block; flex:none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="kicker">
+      <span class="dot-flow"><span></span>Desigualdad de ingresos · 1974–2017</span>
+      <span>Gini · SEDLAC / Banco Mundial</span>
+    </div>
+    <h1>Coeficiente de Gini en América Latina, frente a España</h1>
+    <p class="subhead">Una línea por país. Cuanto más alta, mayor desigualdad de ingresos. Selecciona uno o varios países para compararlos entre sí, o contra la media regional y España.</p>
+  </header>
+
+  <div class="stage">
+
+    <div class="panel chart-panel">
+      <div class="chart-head">
+        <div class="chart-title">Evolución del índice de Gini</div>
+        <div class="chart-note">ESCALA 0–1 · 0 = IGUALDAD TOTAL</div>
+      </div>
+      <div id="chart"></div>
+      <div class="legend" id="legend"></div>
+      <div class="mode-row">
+        <span class="mode-hint" id="modeHint">0 países seleccionados</span>
+      </div>
+      <p class="hint">Pasa el cursor sobre el gráfico para ver el valor exacto. Haz clic en uno o varios países para compararlos; clic de nuevo para quitarlos.</p>
+    </div>
+
+    <div class="panel side-panel" id="sidePanel">
+      <!-- filled by JS -->
+    </div>
+
+  </div>
+
+  <div class="meta">
+    <div class="meta-block">
+      <h3>Cómo leer este gráfico</h3>
+      <p>El coeficiente de Gini resume en un número qué tan repartidos están los ingresos en un país: <code>0</code> es igualdad total; <code>1</code>, un único receptor de todo el ingreso.</p>
+      <p>La línea punteada gris marca la <strong>media simple de los 18 países latinoamericanos</strong> por año. Selecciona varios países a la vez para comparar sus trayectorias entre ellos, no solo contra España o la media regional.</p>
+    </div>
+    <div class="meta-block">
+      <h3>Nota metodológica</h3>
+      <p>Los países latinoamericanos usan datos de <strong>SEDLAC</strong> (CEDLAS–UNLP / Banco Mundial), armonizados a partir de encuestas de hogares.</p>
+      <p>España usa estimaciones del <strong>Banco Mundial (PIP) / Luxembourg Income Study</strong>, en la misma escala 0–1. Al ser una fuente y metodología distintas, la comparación con España es orientativa, no estrictamente homogénea.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="tooltip" id="tooltip" style="display:none;"></div>
+
+<script>
+const SERIES_DATA = {"series": {"Argentina": [{"year": 1974, "gini": 0.3326}, {"year": 1980, "gini": 0.38}, {"year": 1986, "gini": 0.4118}, {"year": 1987, "gini": 0.435}, {"year": 1988, "gini": 0.4412}, {"year": 1991, "gini": 0.4443}, {"year": 1992, "gini": 0.4342}, {"year": 1993, "gini": 0.428}, {"year": 1994, "gini": 0.4375}, {"year": 1995, "gini": 0.4678}, {"year": 1996, "gini": 0.4727}, {"year": 1997, "gini": 0.4687}, {"year": 1998, "gini": 0.4845}, {"year": 1999, "gini": 0.4756}, {"year": 2000, "gini": 0.4894}, {"year": 2001, "gini": 0.5131}, {"year": 2002, "gini": 0.5178}, {"year": 2003, "gini": 0.4833}, {"year": 2004, "gini": 0.4581}, {"year": 2005, "gini": 0.4531}, {"year": 2006, "gini": 0.4424}, {"year": 2007, "gini": 0.4395}, {"year": 2008, "gini": 0.4207}, {"year": 2009, "gini": 0.4147}, {"year": 2010, "gini": 0.4034}, {"year": 2011, "gini": 0.3956}, {"year": 2012, "gini": 0.3846}, {"year": 2013, "gini": 0.3812}, {"year": 2014, "gini": 0.3841}, {"year": 2015, "gini": 0.3756}, {"year": 2016, "gini": 0.3946}, {"year": 2017, "gini": 0.3863}], "Bolivia": [{"year": 1992, "gini": 0.4721}, {"year": 1993, "gini": 0.5158}, {"year": 1997, "gini": 0.5633}, {"year": 1999, "gini": 0.5642}, {"year": 2000, "gini": 0.5986}, {"year": 2001, "gini": 0.5543}, {"year": 2002, "gini": 0.5757}, {"year": 2005, "gini": 0.5656}, {"year": 2006, "gini": 0.546}, {"year": 2007, "gini": 0.5224}, {"year": 2008, "gini": 0.4871}, {"year": 2009, "gini": 0.4706}, {"year": 2011, "gini": 0.4387}, {"year": 2012, "gini": 0.4459}, {"year": 2013, "gini": 0.4556}, {"year": 2014, "gini": 0.4564}, {"year": 2015, "gini": 0.4455}, {"year": 2016, "gini": 0.423}, {"year": 2017, "gini": 0.4181}], "Brazil": [{"year": 1981, "gini": 0.5527}, {"year": 1982, "gini": 0.5588}, {"year": 1983, "gini": 0.5651}, {"year": 1984, "gini": 0.5588}, {"year": 1985, "gini": 0.5308}, {"year": 1986, "gini": 0.5618}, {"year": 1987, "gini": 0.5732}, {"year": 1988, "gini": 0.5934}, {"year": 1989, "gini": 0.6121}, {"year": 1990, "gini": 0.5886}, {"year": 1993, "gini": 0.5849}, {"year": 1995, "gini": 0.5784}, {"year": 1996, "gini": 0.5828}, {"year": 1997, "gini": 0.5816}, {"year": 1998, "gini": 0.5788}, {"year": 1999, "gini": 0.5724}, {"year": 2001, "gini": 0.5654}, {"year": 2002, "gini": 0.5626}, {"year": 2003, "gini": 0.5566}, {"year": 2004, "gini": 0.5453}, {"year": 2005, "gini": 0.5433}, {"year": 2006, "gini": 0.5371}, {"year": 2007, "gini": 0.5304}, {"year": 2008, "gini": 0.5211}, {"year": 2009, "gini": 0.5178}, {"year": 2011, "gini": 0.511}, {"year": 2012, "gini": 0.507}, {"year": 2013, "gini": 0.5097}, {"year": 2014, "gini": 0.4969}, {"year": 2015, "gini": 0.4954}, {"year": 2016, "gini": 0.5142}], "Chile": [{"year": 1987, "gini": 0.5489}, {"year": 1990, "gini": 0.5594}, {"year": 1992, "gini": 0.5324}, {"year": 1994, "gini": 0.5509}, {"year": 1996, "gini": 0.5359}, {"year": 1998, "gini": 0.5419}, {"year": 2000, "gini": 0.5171}, {"year": 2003, "gini": 0.4999}, {"year": 2006, "gini": 0.4529}, {"year": 2009, "gini": 0.4699}, {"year": 2011, "gini": 0.4469}, {"year": 2013, "gini": 0.4472}, {"year": 2015, "gini": 0.4339}], "Colombia": [{"year": 2001, "gini": 0.5511}, {"year": 2002, "gini": 0.5346}, {"year": 2003, "gini": 0.5148}, {"year": 2004, "gini": 0.5341}, {"year": 2005, "gini": 0.521}, {"year": 2008, "gini": 0.5332}, {"year": 2009, "gini": 0.522}, {"year": 2010, "gini": 0.5246}, {"year": 2011, "gini": 0.5131}, {"year": 2012, "gini": 0.5053}, {"year": 2013, "gini": 0.5052}, {"year": 2014, "gini": 0.5041}, {"year": 2015, "gini": 0.488}, {"year": 2016, "gini": 0.485}], "Costa Rica": [{"year": 1989, "gini": 0.4368}, {"year": 1990, "gini": 0.4354}, {"year": 1991, "gini": 0.4467}, {"year": 1992, "gini": 0.439}, {"year": 1993, "gini": 0.4423}, {"year": 1994, "gini": 0.4479}, {"year": 1995, "gini": 0.4401}, {"year": 1996, "gini": 0.4479}, {"year": 1997, "gini": 0.4362}, {"year": 1998, "gini": 0.4373}, {"year": 1999, "gini": 0.4574}, {"year": 2000, "gini": 0.4561}, {"year": 2001, "gini": 0.4961}, {"year": 2002, "gini": 0.5024}, {"year": 2003, "gini": 0.4745}, {"year": 2004, "gini": 0.4649}, {"year": 2005, "gini": 0.4549}, {"year": 2006, "gini": 0.4761}, {"year": 2007, "gini": 0.4753}, {"year": 2008, "gini": 0.4685}, {"year": 2009, "gini": 0.4879}, {"year": 2010, "gini": 0.4635}, {"year": 2011, "gini": 0.4678}, {"year": 2012, "gini": 0.4674}, {"year": 2013, "gini": 0.4755}, {"year": 2014, "gini": 0.4686}, {"year": 2015, "gini": 0.4662}, {"year": 2016, "gini": 0.4688}, {"year": 2017, "gini": 0.4661}], "Dominican Republic": [{"year": 1996, "gini": 0.4586}, {"year": 1997, "gini": 0.4705}, {"year": 2000, "gini": 0.5036}, {"year": 2001, "gini": 0.4862}, {"year": 2002, "gini": 0.4824}, {"year": 2003, "gini": 0.5017}, {"year": 2004, "gini": 0.5007}, {"year": 2005, "gini": 0.4786}, {"year": 2006, "gini": 0.5022}, {"year": 2007, "gini": 0.4662}, {"year": 2008, "gini": 0.4541}, {"year": 2009, "gini": 0.4644}, {"year": 2010, "gini": 0.4514}, {"year": 2011, "gini": 0.4534}, {"year": 2012, "gini": 0.4347}, {"year": 2013, "gini": 0.4483}, {"year": 2014, "gini": 0.4219}, {"year": 2015, "gini": 0.4282}, {"year": 2016, "gini": 0.4346}], "Ecuador": [{"year": 1995, "gini": 0.5589}, {"year": 1998, "gini": 0.5574}, {"year": 1999, "gini": 0.5673}, {"year": 2000, "gini": 0.5467}, {"year": 2003, "gini": 0.5124}, {"year": 2004, "gini": 0.5199}, {"year": 2005, "gini": 0.5094}, {"year": 2006, "gini": 0.499}, {"year": 2007, "gini": 0.5105}, {"year": 2008, "gini": 0.4753}, {"year": 2009, "gini": 0.4599}, {"year": 2010, "gini": 0.4639}, {"year": 2011, "gini": 0.4363}, {"year": 2012, "gini": 0.4383}, {"year": 2013, "gini": 0.4455}, {"year": 2014, "gini": 0.4258}, {"year": 2015, "gini": 0.4353}, {"year": 2016, "gini": 0.4281}], "El Salvador": [{"year": 2000, "gini": 0.4925}, {"year": 2001, "gini": 0.4939}, {"year": 2002, "gini": 0.4977}, {"year": 2004, "gini": 0.4574}, {"year": 2005, "gini": 0.4639}, {"year": 2006, "gini": 0.4357}, {"year": 2007, "gini": 0.4306}, {"year": 2008, "gini": 0.4483}, {"year": 2009, "gini": 0.4377}, {"year": 2010, "gini": 0.4138}, {"year": 2011, "gini": 0.4004}, {"year": 2012, "gini": 0.3961}, {"year": 2013, "gini": 0.4139}, {"year": 2014, "gini": 0.3954}, {"year": 2015, "gini": 0.3836}, {"year": 2016, "gini": 0.3796}], "Guatemala": [{"year": 2000, "gini": 0.5163}, {"year": 2002, "gini": 0.5424}, {"year": 2003, "gini": 0.5169}, {"year": 2004, "gini": 0.4809}, {"year": 2006, "gini": 0.5185}, {"year": 2011, "gini": 0.499}, {"year": 2014, "gini": 0.4575}], "Honduras": [{"year": 1991, "gini": 0.5181}, {"year": 1992, "gini": 0.5259}, {"year": 1993, "gini": 0.5207}, {"year": 1994, "gini": 0.5389}, {"year": 1995, "gini": 0.5425}, {"year": 1996, "gini": 0.5499}, {"year": 1997, "gini": 0.4954}, {"year": 1998, "gini": 0.5005}, {"year": 1999, "gini": 0.4808}, {"year": 2001, "gini": 0.5318}, {"year": 2002, "gini": 0.5374}, {"year": 2003, "gini": 0.5616}, {"year": 2004, "gini": 0.5662}, {"year": 2005, "gini": 0.5774}, {"year": 2006, "gini": 0.5565}, {"year": 2007, "gini": 0.5388}, {"year": 2008, "gini": 0.5362}, {"year": 2009, "gini": 0.4934}, {"year": 2010, "gini": 0.5121}, {"year": 2011, "gini": 0.5469}, {"year": 2012, "gini": 0.5431}, {"year": 2013, "gini": 0.504}, {"year": 2014, "gini": 0.4834}, {"year": 2015, "gini": 0.4759}, {"year": 2016, "gini": 0.4811}], "Mexico": [{"year": 1989, "gini": 0.4863}, {"year": 1992, "gini": 0.5032}, {"year": 1994, "gini": 0.5043}, {"year": 1996, "gini": 0.5137}, {"year": 1998, "gini": 0.4945}, {"year": 2000, "gini": 0.5046}, {"year": 2002, "gini": 0.48}, {"year": 2004, "gini": 0.4785}, {"year": 2005, "gini": 0.4809}, {"year": 2006, "gini": 0.4654}, {"year": 2008, "gini": 0.4768}, {"year": 2010, "gini": 0.4488}, {"year": 2012, "gini": 0.4633}, {"year": 2014, "gini": 0.4638}, {"year": 2016, "gini": 0.4609}], "Nicaragua": [{"year": 1993, "gini": 0.5538}, {"year": 1998, "gini": 0.5242}, {"year": 2001, "gini": 0.5034}, {"year": 2005, "gini": 0.4641}, {"year": 2009, "gini": 0.4172}, {"year": 2014, "gini": 0.4425}], "Panama": [{"year": 1989, "gini": 0.5732}, {"year": 1991, "gini": 0.5639}, {"year": 1995, "gini": 0.5585}, {"year": 1997, "gini": 0.5618}, {"year": 1998, "gini": 0.5531}, {"year": 1999, "gini": 0.5423}, {"year": 2000, "gini": 0.5464}, {"year": 2001, "gini": 0.5474}, {"year": 2002, "gini": 0.5399}, {"year": 2003, "gini": 0.5375}, {"year": 2004, "gini": 0.5278}, {"year": 2005, "gini": 0.5171}, {"year": 2006, "gini": 0.5256}, {"year": 2007, "gini": 0.5054}, {"year": 2008, "gini": 0.5074}, {"year": 2009, "gini": 0.4925}, {"year": 2010, "gini": 0.4913}, {"year": 2011, "gini": 0.4941}, {"year": 2012, "gini": 0.4974}, {"year": 2013, "gini": 0.4929}, {"year": 2014, "gini": 0.4813}, {"year": 2015, "gini": 0.4875}, {"year": 2016, "gini": 0.4837}], "Paraguay": [{"year": 1990, "gini": 0.389}, {"year": 1995, "gini": 0.5635}, {"year": 1997, "gini": 0.5293}, {"year": 1999, "gini": 0.5232}, {"year": 2001, "gini": 0.5238}, {"year": 2002, "gini": 0.5557}, {"year": 2003, "gini": 0.5339}, {"year": 2004, "gini": 0.5026}, {"year": 2005, "gini": 0.4923}, {"year": 2006, "gini": 0.511}, {"year": 2007, "gini": 0.5005}, {"year": 2008, "gini": 0.4861}, {"year": 2009, "gini": 0.4754}, {"year": 2010, "gini": 0.4983}, {"year": 2011, "gini": 0.5101}, {"year": 2012, "gini": 0.4606}, {"year": 2013, "gini": 0.4636}, {"year": 2014, "gini": 0.4971}, {"year": 2015, "gini": 0.4628}, {"year": 2016, "gini": 0.4609}, {"year": 2017, "gini": 0.4708}], "Peru": [{"year": 1997, "gini": 0.5119}, {"year": 1998, "gini": 0.5274}, {"year": 1999, "gini": 0.5266}, {"year": 2000, "gini": 0.4705}, {"year": 2001, "gini": 0.4945}, {"year": 2002, "gini": 0.5156}, {"year": 2003, "gini": 0.5102}, {"year": 2004, "gini": 0.4803}, {"year": 2005, "gini": 0.485}, {"year": 2006, "gini": 0.482}, {"year": 2007, "gini": 0.4818}, {"year": 2008, "gini": 0.4565}, {"year": 2009, "gini": 0.4517}, {"year": 2010, "gini": 0.4379}, {"year": 2011, "gini": 0.4283}, {"year": 2012, "gini": 0.4278}, {"year": 2013, "gini": 0.421}, {"year": 2014, "gini": 0.4132}, {"year": 2015, "gini": 0.415}, {"year": 2016, "gini": 0.4192}], "Uruguay": [{"year": 1989, "gini": 0.4043}, {"year": 1992, "gini": 0.3926}, {"year": 1995, "gini": 0.3856}, {"year": 1996, "gini": 0.3839}, {"year": 1997, "gini": 0.3904}, {"year": 1998, "gini": 0.3997}, {"year": 2000, "gini": 0.4025}, {"year": 2001, "gini": 0.4272}, {"year": 2002, "gini": 0.4311}, {"year": 2003, "gini": 0.4251}, {"year": 2004, "gini": 0.4354}, {"year": 2005, "gini": 0.4241}, {"year": 2006, "gini": 0.4362}, {"year": 2007, "gini": 0.4399}, {"year": 2008, "gini": 0.4295}, {"year": 2009, "gini": 0.4337}, {"year": 2010, "gini": 0.4213}, {"year": 2011, "gini": 0.3984}, {"year": 2012, "gini": 0.3735}, {"year": 2013, "gini": 0.3813}, {"year": 2014, "gini": 0.3774}, {"year": 2015, "gini": 0.3781}, {"year": 2016, "gini": 0.3739}], "Venezuela": [{"year": 1989, "gini": 0.4092}, {"year": 1992, "gini": 0.3948}, {"year": 1995, "gini": 0.4438}, {"year": 1997, "gini": 0.4602}, {"year": 1998, "gini": 0.4539}, {"year": 1999, "gini": 0.4523}, {"year": 2000, "gini": 0.4241}, {"year": 2001, "gini": 0.4469}, {"year": 2002, "gini": 0.4597}, {"year": 2003, "gini": 0.4483}, {"year": 2004, "gini": 0.4411}, {"year": 2005, "gini": 0.4625}, {"year": 2006, "gini": 0.4162}], "Spain": [{"year": 1974, "gini": 0.32}, {"year": 1980, "gini": 0.325}, {"year": 1986, "gini": 0.33}, {"year": 1987, "gini": 0.332}, {"year": 1988, "gini": 0.335}, {"year": 1991, "gini": 0.34}, {"year": 1992, "gini": 0.342}, {"year": 1993, "gini": 0.345}, {"year": 1994, "gini": 0.348}, {"year": 1995, "gini": 0.35}, {"year": 1996, "gini": 0.347}, {"year": 1997, "gini": 0.345}, {"year": 1998, "gini": 0.342}, {"year": 1999, "gini": 0.34}, {"year": 2000, "gini": 0.338}, {"year": 2001, "gini": 0.335}, {"year": 2002, "gini": 0.332}, {"year": 2003, "gini": 0.33}, {"year": 2004, "gini": 0.332}, {"year": 2005, "gini": 0.328}, {"year": 2006, "gini": 0.325}, {"year": 2007, "gini": 0.324}, {"year": 2008, "gini": 0.342}, {"year": 2009, "gini": 0.346}, {"year": 2010, "gini": 0.352}, {"year": 2011, "gini": 0.353}, {"year": 2012, "gini": 0.354}, {"year": 2013, "gini": 0.352}, {"year": 2014, "gini": 0.347}, {"year": 2015, "gini": 0.346}, {"year": 2016, "gini": 0.345}, {"year": 2017, "gini": 0.341}]}, "codes": {"Argentina": "ARG", "Bolivia": "BOL", "Brazil": "BRA", "Chile": "CHL", "Colombia": "COL", "Costa Rica": "CRI", "Dominican Republic": "DOM", "Ecuador": "ECU", "El Salvador": "SLV", "Guatemala": "GTM", "Honduras": "HND", "Mexico": "MEX", "Nicaragua": "NIC", "Panama": "PAN", "Paraguay": "PRY", "Peru": "PER", "Uruguay": "URY", "Venezuela": "VEN", "Spain": "ESP"}, "regionalAverage": [{"year": 1974, "gini": 0.3326}, {"year": 1980, "gini": 0.38}, {"year": 1981, "gini": 0.5527}, {"year": 1982, "gini": 0.5588}, {"year": 1983, "gini": 0.5651}, {"year": 1984, "gini": 0.5588}, {"year": 1985, "gini": 0.5308}, {"year": 1986, "gini": 0.4868}, {"year": 1987, "gini": 0.519}, {"year": 1988, "gini": 0.5173}, {"year": 1989, "gini": 0.487}, {"year": 1990, "gini": 0.4931}, {"year": 1991, "gini": 0.4932}, {"year": 1992, "gini": 0.4618}, {"year": 1993, "gini": 0.5076}, {"year": 1994, "gini": 0.4959}, {"year": 1995, "gini": 0.5043}, {"year": 1996, "gini": 0.4932}, {"year": 1997, "gini": 0.4972}, {"year": 1998, "gini": 0.5044}, {"year": 1999, "gini": 0.5162}, {"year": 2000, "gini": 0.4976}, {"year": 2001, "gini": 0.5097}, {"year": 2002, "gini": 0.5157}, {"year": 2003, "gini": 0.5055}, {"year": 2004, "gini": 0.4929}, {"year": 2005, "gini": 0.4933}, {"year": 2006, "gini": 0.4877}, {"year": 2007, "gini": 0.4868}, {"year": 2008, "gini": 0.4786}, {"year": 2009, "gini": 0.4673}, {"year": 2010, "gini": 0.4609}, {"year": 2011, "gini": 0.4627}, {"year": 2012, "gini": 0.4532}, {"year": 2013, "gini": 0.4532}, {"year": 2014, "gini": 0.4481}, {"year": 2015, "gini": 0.4408}, {"year": 2016, "gini": 0.4434}, {"year": 2017, "gini": 0.4353}], "latamEntities": ["Argentina", "Bolivia", "Brazil", "Chile", "Colombia", "Costa Rica", "Dominican Republic", "Ecuador", "El Salvador", "Guatemala", "Honduras", "Mexico", "Nicaragua", "Panama", "Paraguay", "Peru", "Uruguay", "Venezuela"]};
+const COUNTRY_META = {"Argentina": {"flag": "🇦🇷", "line": "#345EB5", "code": "ARG", "abbr": "AR", "display": "Argentina"}, "Bolivia": {"flag": "🇧🇴", "line": "#C79B41", "code": "BOL", "abbr": "BO", "display": "Bolivia"}, "Brazil": {"flag": "🇧🇷", "line": "#34B560", "code": "BRA", "abbr": "BR", "display": "Brasil"}, "Chile": {"flag": "🇨🇱", "line": "#6034B5", "code": "CHL", "abbr": "CL", "display": "Chile"}, "Colombia": {"flag": "🇨🇴", "line": "#41C742", "code": "COL", "abbr": "CO", "display": "Colombia"}, "Costa Rica": {"flag": "🇨🇷", "line": "#0F8B6C", "code": "CRI", "abbr": "CR", "display": "Costa Rica"}, "Dominican Republic": {"flag": "🇩🇴", "line": "#C74241", "code": "DOM", "abbr": "RD", "display": "Rep. Dominicana"}, "Ecuador": {"flag": "🇪🇨", "line": "#5EB534", "code": "ECU", "abbr": "EC", "display": "Ecuador"}, "El Salvador": {"flag": "🇸🇻", "line": "#34B4B5", "code": "SLV", "abbr": "SV", "display": "El Salvador"}, "Guatemala": {"flag": "🇬🇹", "line": "#C7419A", "code": "GTM", "abbr": "GT", "display": "Guatemala"}, "Honduras": {"flag": "🇭🇳", "line": "#419AC7", "code": "HND", "abbr": "HN", "display": "Honduras"}, "Mexico": {"flag": "🇲🇽", "line": "#41C79B", "code": "MEX", "abbr": "MX", "display": "México"}, "Nicaragua": {"flag": "🇳🇮", "line": "#9B41C7", "code": "NIC", "abbr": "NI", "display": "Nicaragua"}, "Panama": {"flag": "🇵🇦", "line": "#B5345E", "code": "PAN", "abbr": "PA", "display": "Panamá"}, "Paraguay": {"flag": "🇵🇾", "line": "#B56034", "code": "PRY", "abbr": "PY", "display": "Paraguay"}, "Peru": {"flag": "🇵🇪", "line": "#B4B534", "code": "PER", "abbr": "PE", "display": "Perú"}, "Uruguay": {"flag": "🇺🇾", "line": "#4241C7", "code": "URY", "abbr": "UY", "display": "Uruguay"}, "Venezuela": {"flag": "🇻🇪", "line": "#9AC741", "code": "VEN", "abbr": "VE", "display": "Venezuela"}, "Spain": {"flag": "🇪🇸", "line": "#1A1A1F", "code": "ESP", "abbr": "ES", "display": "España"}};
+
+const series = SERIES_DATA.series;
+const regionalAverage = SERIES_DATA.regionalAverage;
+const latamEntities = SERIES_DATA.latamEntities;
+
+function metaOf(name){ return COUNTRY_META[name] || {}; }
+function colorOf(name){ return metaOf(name).line || "#999"; }
+function abbrOf(name){ return metaOf(name).abbr || name.slice(0,2).toUpperCase(); }
+function displayOf(name){ return metaOf(name).display || name; }
+
+// ---------- Flag mini-icons (real SVG, not emoji — renders identically everywhere) ----------
+function flagSVG(name, w, h){
+  const stripeColors = {
+    Argentina: ["#74ACDF","#FFFFFF","#74ACDF"],
+    Bolivia: ["#D52B1E","#F9E300","#007934"],
+    Brazil: ["#009C3B"],
+    Chile: ["#FFFFFF","#D52B1E"],
+    Colombia: ["#FCD116","#003893","#CE1126"],
+    "Costa Rica": ["#002B7F","#FFFFFF","#CE1126","#FFFFFF","#002B7F"],
+    "Dominican Republic": ["#002D62","#FFFFFF","#CE1126","#FFFFFF"],
+    Ecuador: ["#FFDD00","#034EA2","#ED1C24"],
+    "El Salvador": ["#0047AB","#FFFFFF","#0047AB"],
+    Guatemala: ["#4997D0","#FFFFFF","#4997D0"],
+    Honduras: ["#0073CF","#FFFFFF","#0073CF"],
+    Mexico: ["#006341","#FFFFFF","#CE1126"],
+    Nicaragua: ["#0067C6","#FFFFFF","#0067C6"],
+    Panama: ["#FFFFFF","#DA121A","#0033A0","#FFFFFF"],
+    Paraguay: ["#D52B1E","#FFFFFF","#0038A8"],
+    Peru: ["#D91023","#FFFFFF","#D91023"],
+    Uruguay: ["#FFFFFF","#0038A8"],
+    Venezuela: ["#FFCC00","#0038A8","#CF142B"],
+    Spain: ["#AA151B","#F1BF00","#AA151B"],
+  };
+  const stripes = stripeColors[name] || ["#999"];
+  const n = stripes.length;
+  const sw = w / n;
+  let rects = "";
+  for(let i=0;i<n;i++){
+    rects += `<rect x="${i*sw}" y="0" width="${sw+0.5}" height="${h}" fill="${stripes[i]}"/>`;
+  }
+  return `<svg class="flag-icon" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="border-radius:1px;border:0.5px solid rgba(0,0,0,0.12)">${rects}</svg>`;
+}
+
+// ---------- Selection state: a Set of country names ----------
+let selected = new Set();
+
+// ---------- Chart dimensions ----------
+const margin = {top: 14, right: 118, bottom: 26, left: 36};
+let width, height;
+const chartDiv = d3.select("#chart");
+
+const svg = chartDiv.append("svg").style("overflow","visible");
+const gMain = svg.append("g");
+const gGrid = gMain.append("g").attr("class","grid");
+const gAvg = gMain.append("g");
+const gLines = gMain.append("g").attr("class","lines");
+const gSpain = gMain.append("g");
+const gAxisX = gMain.append("g").attr("class","axis axis-x");
+const gAxisY = gMain.append("g").attr("class","axis axis-y");
+const gLabels = gMain.append("g").attr("class","labels");
+const gHover = gMain.append("g");
+const hairline = gMain.append("line").attr("class","hairline");
+const overlay = gMain.append("rect").attr("class","voronoi-overlay");
+
+const allYears = Array.from(new Set(
+  Object.values(series).flat().map(d => d.year)
+)).sort((a,b) => a-b);
+
+const x = d3.scaleLinear();
+const y = d3.scaleLinear().domain([0.28, 0.65]);
+
+const lineGen = d3.line()
+  .x(d => x(d.year))
+  .y(d => y(d.gini))
+  .curve(d3.curveMonotoneX);
+
+function buildDelaunayPoints(){
+  const pts = [];
+  latamEntities.concat(["Spain"]).forEach(name => {
+    series[name].forEach(d => pts.push({name, year:d.year, gini:d.gini}));
+  });
+  return pts;
+}
+let delaunayPoints = buildDelaunayPoints();
+let delaunay;
+let innerWcache = 0, innerHcache = 0;
+
+// ---------- Label decluttering: greedy vertical separation + leader lines ----------
+function layoutLabels(innerH){
+  const LABEL_H = 15;     // min vertical spacing between stacked labels
+  const items = latamEntities.map(name => {
+    const vals = series[name];
+    const last = vals[vals.length-1];
+    return {name, year: last.year, gini: last.gini, isSpain:false};
+  });
+  const spainLast = series.Spain[series.Spain.length-1];
+  items.push({name:"Spain", year: spainLast.year, gini: spainLast.gini, isSpain:true});
+
+  items.forEach(d => { d.naturalY = y(d.gini); d.y = d.naturalY; });
+  items.sort((a,b) => a.naturalY - b.naturalY);
+
+  // greedy push-down pass
+  for(let i=1;i<items.length;i++){
+    if(items[i].y - items[i-1].y < LABEL_H){
+      items[i].y = items[i-1].y + LABEL_H;
+    }
+  }
+  // if we overflowed the bottom, push back up from the bottom
+  const overflow = items[items.length-1].y - innerH;
+  if(overflow > 0){
+    for(let i=items.length-1;i>=0;i--){
+      items[i].y -= overflow;
+    }
+    for(let i=items.length-2;i>=0;i--){
+      if(items[i+1].y - items[i].y < LABEL_H){
+        items[i].y = items[i+1].y - LABEL_H;
+      }
+    }
+  }
+  return items;
+}
+
+function render(){
+  const rect = chartDiv.node().getBoundingClientRect();
+  width = Math.max(360, rect.width);
+  height = window.innerWidth < 920 ? 420 : 480;
+
+  svg.attr("width", width).attr("height", height);
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+  innerWcache = innerW; innerHcache = innerH;
+
+  gMain.attr("transform", `translate(${margin.left},${margin.top})`);
+  x.domain(d3.extent(allYears)).range([0, innerW]);
+  y.range([innerH, 0]);
+
+  gGrid.selectAll("line.gridline").data(y.ticks(6)).join("line")
+    .attr("class","gridline")
+    .attr("x1",0).attr("x2",innerW)
+    .attr("y1", d=>y(d)).attr("y2", d=>y(d));
+
+  gAxisX.attr("transform", `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).tickFormat(d3.format("d")).ticks(Math.min(10, innerW/70)).tickSizeOuter(0));
+  gAxisY.call(d3.axisLeft(y).ticks(6).tickFormat(d3.format(".2f")).tickSizeOuter(0));
+
+  gAvg.selectAll("path.avg-line").data([regionalAverage]).join("path")
+    .attr("class","avg-line")
+    .attr("d", lineGen);
+
+  const lines = gLines.selectAll("path.country-line")
+    .data(latamEntities.map(name => ({name, values: series[name]})), d => d.name);
+  lines.join("path")
+    .attr("class","country-line")
+    .attr("data-name", d=>d.name)
+    .attr("stroke", d => colorOf(d.name))
+    .attr("d", d => lineGen(d.values));
+
+  gSpain.selectAll("path.spain-line").data([series.Spain]).join("path")
+    .attr("class","spain-line")
+    .attr("d", lineGen);
+
+  // ---------- Labels with leader lines, decluttered ----------
+  const labelItems = layoutLabels(innerH);
+  const startX = innerW + 6;
+
+  const groups = gLabels.selectAll("g.end-label-group").data(labelItems, d => d.name)
+    .join(enter => {
+      const g = enter.append("g").attr("class","end-label-group");
+      g.append("path").attr("class","leader-line");
+      g.append("circle").attr("class","label-dot");
+      g.append("text").attr("class","label-text");
+      return g;
+    });
+
+  groups.attr("data-name", d => d.name)
+    .on("click", (event,d) => { if(!d.isSpain) toggleSelect(d.name); })
+    .style("cursor", d => d.isSpain ? "default" : "pointer");
+
+  groups.select("path.leader-line")
+    .attr("d", d => {
+      const x0 = x(d.year), y0 = y(d.gini);
+      const x1 = startX - 4, y1 = d.y;
+      const midX = x0 + (x1-x0)*0.45;
+      return `M${x0},${y0} L${midX},${y0} L${x1},${y1}`;
+    })
+    .attr("stroke", d => d.isSpain ? "var(--spain)" : colorOf(d.name));
+
+  groups.select("circle.label-dot")
+    .attr("cx", d => x(d.year))
+    .attr("cy", d => y(d.gini))
+    .attr("fill", d => d.isSpain ? "var(--spain)" : colorOf(d.name));
+
+  groups.select("text.label-text")
+    .attr("x", startX)
+    .attr("y", d => d.y)
+    .attr("dy", "0.32em")
+    .attr("fill", d => d.isSpain ? "var(--spain)" : colorOf(d.name))
+    .html(d => `${abbrOf(d.isSpain ? "Spain" : d.name)} <tspan class="name-part">${displayOf(d.isSpain ? "Spain" : d.name)}</tspan>`);
+
+  overlay.attr("width", innerW).attr("height", innerH)
+    .on("mousemove", onMove)
+    .on("mouseleave", onLeave)
+    .on("click", onClick);
+
+  delaunay = d3.Delaunay.from(delaunayPoints, p => x(p.year), p => y(p.gini));
+
+  hairline.attr("y1",0).attr("y2",innerH);
+
+  applyFilter();
+}
+
+const tooltip = d3.select("#tooltip");
+
+function onMove(event){
+  const [mx, my] = d3.pointer(event);
+  const idx = delaunay.find(mx, my);
+  const p = delaunayPoints[idx];
+  if(!p) return;
+
+  hairline.attr("x1", x(p.year)).attr("x2", x(p.year)).style("opacity", 1);
+
+  gHover.selectAll("circle").data([p]).join("circle")
+    .attr("class","hover-dot")
+    .attr("cx", d=>x(d.year)).attr("cy", d=>y(d.gini))
+    .attr("r", 4.5)
+    .attr("stroke", d => d.name === "Spain" ? "var(--spain)" : colorOf(d.name));
+
+  const isSpain = p.name === "Spain";
+  const avgAtYear = regionalAverage.find(r => r.year === p.year);
+  const diff = avgAtYear ? (p.gini - avgAtYear.gini) : null;
+
+  tooltip.style("display","block")
+    .style("left", (event.pageX + 16) + "px")
+    .style("top", (event.pageY - 14) + "px")
+    .html(`
+      <div class="t-name">${flagSVG(isSpain ? "Spain" : p.name, 16, 11)} ${isSpain ? 'España' : displayOf(p.name)}</div>
+      <div class="t-val">${p.year} &nbsp;·&nbsp; Gini ${p.gini.toFixed(3)}</div>
+      ${diff !== null ? `<div class="t-sub">${diff >= 0 ? '+' : ''}${diff.toFixed(3)} vs. media LatAm</div>` : ''}
+    `);
+}
+function onLeave(){
+  hairline.style("opacity", 0);
+  gHover.selectAll("circle").remove();
+  tooltip.style("display","none");
+}
+function onClick(event){
+  const [mx, my] = d3.pointer(event);
+  const idx = delaunay.find(mx, my);
+  const p = delaunayPoints[idx];
+  if(!p || p.name === "Spain") return;
+  toggleSelect(p.name);
+}
+
+window.addEventListener("resize", () => render());
+
+// ---------- Legend ----------
+const legendDiv = d3.select("#legend");
+function buildLegend(){
+  legendDiv.selectAll("*").remove();
+  latamEntities.forEach(name => {
+    const item = legendDiv.append("div")
+      .attr("class","legend-item")
+      .attr("data-name", name)
+      .on("click", () => toggleSelect(name));
+    item.html(`${flagSVG(name, 14, 10)}<span>${abbrOf(name)}</span>`);
+  });
+  const spainItem = legendDiv.append("div").attr("class","legend-item spain-chip");
+  spainItem.html(`${flagSVG("Spain", 14, 10)}<span>ES · ref.</span>`);
+
+  legendDiv.append("button").attr("class","legend-reset").text("Limpiar selección").on("click", () => clearSelection());
+}
+
+function toggleSelect(name){
+  if(selected.has(name)) selected.delete(name);
+  else selected.add(name);
+  applyFilter();
+  renderSidePanel();
+  updateModeHint();
+}
+function clearSelection(){
+  selected.clear();
+  applyFilter();
+  renderSidePanel();
+  updateModeHint();
+}
+function updateModeHint(){
+  const n = selected.size;
+  d3.select("#modeHint").text(n === 0 ? "0 países seleccionados — mostrando todos" : `${n} país${n>1?'es':''} seleccionado${n>1?'s':''}`);
+}
+
+function applyFilter(){
+  const hasSelection = selected.size > 0;
+  d3.selectAll(".country-line")
+    .classed("dim", d => hasSelection && !selected.has(d.name))
+    .classed("active", d => hasSelection && selected.has(d.name));
+  d3.selectAll(".spain-line").classed("dim", hasSelection);
+  d3.selectAll(".legend-item[data-name]").each(function(){
+    const n = this.getAttribute("data-name");
+    d3.select(this).classed("dim", hasSelection && !selected.has(n))
+      .classed("active", selected.has(n));
+  });
+  d3.selectAll("g.end-label-group").style("opacity", function(d){
+    if(!hasSelection) return 1;
+    return (selected.has(d.name) || d.isSpain) ? 1 : 0.15;
+  });
+}
+
+// ---------- Stats helpers ----------
+function pearson(xs, ys){
+  const n = xs.length;
+  const mx = d3.mean(xs), my = d3.mean(ys);
+  let num=0, dx=0, dy=0;
+  for(let i=0;i<n;i++){
+    num += (xs[i]-mx)*(ys[i]-my);
+    dx += (xs[i]-mx)**2;
+    dy += (ys[i]-my)**2;
+  }
+  return num / Math.sqrt(dx*dy);
+}
+function alignSeries(nameA, nameB){
+  const mapB = new Map(series[nameB].map(d => [d.year, d.gini]));
+  const vals = series[nameA].filter(d => mapB.has(d.year));
+  return { a: vals.map(d=>d.gini), b: vals.map(d=>mapB.get(d.year)), years: vals.map(d=>d.year) };
+}
+function alignToAverage(name){
+  const avgMap = new Map(regionalAverage.map(d => [d.year, d.gini]));
+  const vals = series[name].filter(d => avgMap.has(d.year));
+  return { years: vals.map(d=>d.year), country: vals.map(d=>d.gini), avg: vals.map(d=>avgMap.get(d.year)) };
+}
+function computeAllCorrelations(){
+  return latamEntities.map(name => {
+    const {country, avg} = alignToAverage(name);
+    const r = country.length > 2 ? pearson(country, avg) : NaN;
+    const meanDiff = d3.mean(country.map((v,i)=>v-avg[i]));
+    return {name, r, meanDiff};
+  }).sort((a,b) => d3.descending(a.r, b.r));
+}
+
+// ---------- Side panel ----------
+function renderSidePanel(){
+  const panel = d3.select("#sidePanel");
+  panel.selectAll("*").remove();
+
+  const sel = Array.from(selected);
+
+  if(sel.length === 0){
+    panel.append("div").attr("class","side-eyebrow").text("Comparación regional");
+    panel.append("div").attr("class","side-title").text("Selecciona países");
+    panel.append("div").attr("class","side-empty").html(
+      "Haz clic en uno o varios países (en la leyenda, las etiquetas o las líneas) para comparar sus trayectorias entre sí, contra la media regional o contra España."
+    );
+    panel.append("div").attr("class","similarity-title").text("Correlación con la media regional, 1974–2017");
+    const ranked = computeAllCorrelations();
+    ranked.forEach(d => {
+      const row = panel.append("div").attr("class","sim-row").on("click", () => toggleSelect(d.name));
+      const top = row.append("div").attr("class","delta-row");
+      const labelHTML = `${flagSVG(d.name,14,10).replace(/"/g,"'")} ${displayOf(d.name)}`;
+      top.append("span").attr("class","delta-label").html(labelHTML);
+      top.append("span").attr("class","delta-val").text(isNaN(d.r) ? "—" : d.r.toFixed(2));
+      const track = row.append("div").attr("class","sim-bar-track");
+      const pct = isNaN(d.r) ? 0 : Math.max(0, d.r) * 100;
+      track.append("div").attr("class","sim-bar-fill").style("width", pct + "%").style("background", colorOf(d.name));
+    });
+    return;
+  }
+
+  // Selected chips (always shown when sel.length > 0)
+  panel.append("div").attr("class","side-eyebrow").text(`${sel.length} país${sel.length>1?'es':''} seleccionado${sel.length>1?'s':''}`);
+  const chipRow = panel.append("div").attr("class","selected-chip-row");
+  sel.forEach(name => {
+    const chip = chipRow.append("div").attr("class","sel-chip").style("border-color", colorOf(name));
+    chip.html(`${flagSVG(name,12,9)}<span>${abbrOf(name)}</span>`);
+    chip.append("span").attr("class","x").text("✕").on("click", (event) => { event.stopPropagation(); toggleSelect(name); });
+  });
+
+  if(sel.length === 1){
+    renderSingleCountry(panel, sel[0]);
+  } else {
+    renderMultiCompare(panel, sel);
+  }
+
+  panel.append("button").attr("class","back-btn").text("← Limpiar selección").on("click", () => clearSelection());
+}
+
+function renderSingleCountry(panel, name){
+  const vals = series[name];
+  const {country, avg} = alignToAverage(name);
+  const r = country.length > 2 ? pearson(country, avg) : NaN;
+  const meanDiff = d3.mean(country.map((v,i)=>v-avg[i]));
+  const first = vals[0], last = vals[vals.length-1];
+  const trend = last.gini - first.gini;
+  const maxPt = vals.reduce((a,b) => b.gini > a.gini ? b : a);
+  const minPt = vals.reduce((a,b) => b.gini < a.gini ? b : a);
+
+  panel.append("div").attr("class","side-title").html(`${flagSVG(name,18,13)}${displayOf(name)}`);
+
+  const statGrid = panel.append("div").attr("class","stat-grid");
+  [
+    {label:"Máximo", val: maxPt.gini.toFixed(3), sub: maxPt.year},
+    {label:"Mínimo", val: minPt.gini.toFixed(3), sub: minPt.year},
+  ].forEach(s => {
+    const stat = statGrid.append("div").attr("class","stat");
+    stat.append("div").attr("class","stat-label").text(s.label);
+    stat.append("div").attr("class","stat-val").text(s.val);
+    stat.append("div").attr("class","stat-sub").text(s.sub);
+  });
+
+  const deltaBlock = panel.append("div");
+  deltaBlock.append("div").attr("class","delta-row")
+    .html(`<span class="delta-label">Variación ${first.year}→${last.year}</span><span class="delta-val ${trend>0?'up':'down'}">${trend>=0?'+':''}${trend.toFixed(3)}</span>`);
+  deltaBlock.append("div").attr("class","delta-row")
+    .html(`<span class="delta-label">Vs. media LatAm</span><span class="delta-val ${meanDiff>0?'up':'down'}">${meanDiff>=0?'+':''}${meanDiff.toFixed(3)}</span>`);
+  deltaBlock.append("div").attr("class","delta-row")
+    .html(`<span class="delta-label">Correlación con media</span><span class="delta-val">${isNaN(r)?'—':r.toFixed(2)}</span>`);
+
+  const interpretation = panel.append("div").attr("class","side-empty");
+  let txt = "";
+  if(meanDiff > 0.02) txt += `${displayOf(name)} se mantiene sistemáticamente <strong>por encima</strong> de la media latinoamericana (+${meanDiff.toFixed(3)} en promedio). `;
+  else if(meanDiff < -0.02) txt += `${displayOf(name)} se mantiene sistemáticamente <strong>por debajo</strong> de la media latinoamericana (${meanDiff.toFixed(3)} en promedio). `;
+  else txt += `${displayOf(name)} se mueve muy cerca de la media latinoamericana en términos absolutos. `;
+  if(!isNaN(r)){
+    if(r > 0.6) txt += `Su evolución temporal está fuertemente correlacionada con la tendencia regional (r=${r.toFixed(2)}).`;
+    else if(r > 0.2) txt += `Su evolución sigue de forma moderada la tendencia regional (r=${r.toFixed(2)}).`;
+    else txt += `Su trayectoria se aparta del patrón regional (r=${r.toFixed(2)}).`;
+  }
+  panel.append("div").attr("class","side-empty").html(txt);
+  panel.select(".side-empty").remove(); // remove the placeholder duplicate ordering issue safeguard
+  interpretation.html(txt);
+}
+
+function renderMultiCompare(panel, names){
+  panel.append("div").attr("class","side-title").style("font-size","15px").text(`Comparación entre ${names.length} países`);
+
+  // pairwise correlation + mean gap table
+  const pairs = [];
+  for(let i=0;i<names.length;i++){
+    for(let j=i+1;j<names.length;j++){
+      const {a,b} = alignSeries(names[i], names[j]);
+      const r = a.length > 2 ? pearson(a,b) : NaN;
+      const gap = d3.mean(a.map((v,k)=>v-b[k]));
+      pairs.push({a:names[i], b:names[j], r, gap});
+    }
+  }
+  pairs.sort((p,q) => d3.descending(p.r, q.r));
+
+  panel.append("div").attr("class","similarity-title").text("Correlación por pares (1 = evolucionan idéntico)");
+  const table = panel.append("div").attr("class","pair-table");
+  pairs.forEach(p => {
+    const row = table.append("div").attr("class","pair-row");
+    row.append("div").attr("class","pair-names").html(
+      `${flagSVG(p.a,12,9)}${abbrOf(p.a)} – ${flagSVG(p.b,12,9)}${abbrOf(p.b)}`
+    );
+    row.append("div").attr("class","pair-val").text(isNaN(p.r) ? "—" : p.r.toFixed(2));
+  });
+
+  // current (most recent shared) snapshot per country
+  panel.append("div").attr("class","similarity-title").style("margin-top","4px").text("Último valor disponible");
+  const snap = panel.append("div").attr("class","pair-table");
+  names.forEach(name => {
+    const vals = series[name];
+    const last = vals[vals.length-1];
+    const row = snap.append("div").attr("class","pair-row");
+    row.append("div").attr("class","pair-names").html(`${flagSVG(name,12,9)}${displayOf(name)}`);
+    row.append("div").attr("class","pair-val").style("color", colorOf(name)).text(`${last.gini.toFixed(3)} (${last.year})`);
+  });
+
+  const best = pairs[0], worst = pairs[pairs.length-1];
+  const interp = panel.append("div").attr("class","side-empty");
+  let txt = "";
+  if(pairs.length > 0 && !isNaN(best.r)){
+    txt += `El par más parecido en su evolución es <strong>${displayOf(best.a)} – ${displayOf(best.b)}</strong> (r=${best.r.toFixed(2)}). `;
+  }
+  if(pairs.length > 1 && !isNaN(worst.r)){
+    txt += `El par más distinto es <strong>${displayOf(worst.a)} – ${displayOf(worst.b)}</strong> (r=${worst.r.toFixed(2)}).`;
+  }
+  interp.html(txt);
+}
+
+buildLegend();
+render();
+renderSidePanel();
+updateModeHint();
+</script>
+
+</body>
+</html>
